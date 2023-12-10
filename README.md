@@ -2,6 +2,12 @@
 
 Gain followers, defeat the nonbelievers, and smite your enemies.  Be part of the Phenomenon: the first social coordination game on the blockchain.
 
+## Chainlink Constellation Hackathon
+Phenomenon uses 2 Chainlink products: VRF and Functions.
+Both of these functions can be seen in use in this repo contracts/phenomenon.sol lines 346-481.  
+VRF is called when the first player registers for the game (line 188) and contract state is updated when the game starts (line 212).
+Functions is called at the start of the game and any time a player takes a turn (line 216, 242, 249, 266, or 277). Starting the game exceeds the callback function gaslimit and requires a player to call setGame() to change state variables.
+
 
 # Rules of Phenomenon
 
@@ -30,7 +36,7 @@ A successful accusal has 2 outcomes. If the target opponent is free then they ar
 
 
 ## High Priests
-At the start of the game, some prophets may randomly be chosed to be High Priests. These players cannot win the game on their own, however if they become the High Priest of the last remaining prophet then they win too. Being a High Priest improves the odds of a prophet successfully smiting an opponent or accusing them of Blasphemy. If the prophet that the High Priest is supporting dies then the High Priest is also eliminated. High Priests may change who they support at any time as long as they have not been eliminated.
+At the start of the game, some prophets may randomly be chosen as a High Priests. These players cannot win the game on their own, however if they become the High Priest of the last remaining prophet then the High Priest also wins. Being a High Priest improves the odds of a prophet successfully smiting an opponent or accusing them of Blasphemy. If the prophet that the High Priest is supporting dies then the High Priest is also eliminated. High Priests may change who they support at any time (excluding the time waiting for a Chainlink Function callback) as long as they have not been eliminated.
 
 
 ## Ending and Reseting Game
