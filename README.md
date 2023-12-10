@@ -2,6 +2,9 @@
 
 Gain followers, defeat the nonbelievers, and smite your enemies.  Be part of the Phenomenon: the first social coordination game on the blockchain.
 
+## Game Frontend URL
+[https://0xomen.github.io/phenomenon/](https://0xomen.github.io/phenomenon/)
+
 ## Chainlink Constellation Hackathon
 Phenomenon uses 2 Chainlink products: VRF and Functions.
 Both of these functions can be seen in use in this repo contracts/phenomenon.sol lines 346-481.  
