@@ -100,7 +100,7 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
     uint256 ENTRANCE_FEE;
     uint16 public NUMBER_OF_PROPHETS;
     address GAME_TOKEN;
-    uint256 public GAME_NUMBER;
+    uint256 GAME_NUMBER;
     address OWNER;
 
     //Tracks tokens deposited each game, resets every game
@@ -112,8 +112,8 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
     ProphetData[] public prophets;
     GameState public gameStatus;
     uint256 public prophetsRemaining;
-    uint256 public roleVRFSeed;
-    uint256 public gameRound;
+    uint256 roleVRFSeed;
+    uint256 gameRound;
     uint256 public currentProphetTurn;
 
     // mapping of which prophet each address holds allegiance tickets to
