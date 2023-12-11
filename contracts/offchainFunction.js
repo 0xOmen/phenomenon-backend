@@ -22,7 +22,10 @@ if (_action == 0) {
     const miracleFailureOdds = 25
     let result = "1"
     if (_currentProphetTurn != chosenOne) {
-        if (1 + (Date.now() % 100) + _ticketShare / 10 < miracleFailureOdds)
+        if (
+            1 + ((Math.random() * 100) % 100) + _ticketShare / 10 <
+            miracleFailureOdds
+        )
             result = "0"
     }
     response = response.concat(result)
@@ -33,7 +36,10 @@ else if (_action == 1) {
     const smiteFailureOdds = 90
     let result = "3"
     if (_currentProphetTurn != chosenOne) {
-        if (1 + (Date.now() % 100) + _ticketShare / 2 < smiteFailureOdds)
+        if (
+            1 + ((Math.random() * 100) % 100) + _ticketShare / 2 <
+            smiteFailureOdds
+        )
             result = "2"
     }
     response = response.concat(result)
@@ -42,7 +48,7 @@ else if (_action == 1) {
 } else if (_action == 2) {
     const accuseFailureOdds = 90
     let result = "5"
-    if (1 + (Date.now() % 100) + _ticketShare < accuseFailureOdds) {
+    if (1 + ((Math.random() * 100) % 100) + _ticketShare < accuseFailureOdds) {
         result = "4"
     }
     response = response.concat(result)
@@ -53,7 +59,7 @@ else if (_action == 3) {
         const miracleFailureOdds = 25
         let result = "1"
         if (_prophet != chosenOne) {
-            if (1 + ((Date.now() * _prophet) % 100) < miracleFailureOdds)
+            if (1 + ((Math.random() * 100) % 100) < miracleFailureOdds)
                 result = "0"
         }
         response = response.concat(result)
