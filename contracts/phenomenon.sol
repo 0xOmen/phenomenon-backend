@@ -289,11 +289,13 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
     // Allow NUMBER_OF_PROPHETS to be changed in Hackathon but maybe don't let this happen in Production
     // There may be a griefing vector I haven't thought of
     function reset(uint16 _numberOfPlayers) public {
-        if (gameStatus != GameState.ENDED) {
-            revert Game__NotInProgress();
-        }
-        if (block.timestamp < lastRoundTimestamp + INTERVAL) {
-            revert Game__NotAllowed();
+        if (msg.sender != OWNER) {
+            if (gameStatus != GameState.ENDED) {
+                revert Game__NotInProgress();
+            }
+            if (block.timestamp < lastRoundTimestamp + INTERVAL) {
+                revert Game__NotAllowed();
+            }
         }
 
         GAME_NUMBER++;
@@ -337,6 +339,7 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
                     prophets[_prophet].args = 99;
                 }
             }
+            turnManager();
         }
     }
 
