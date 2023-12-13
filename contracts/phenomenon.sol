@@ -8,8 +8,6 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 import {FunctionsClient} from "@chainlink/contracts/src/v0.8/functions/dev/v1_0_0/FunctionsClient.sol";
 import {ConfirmedOwner} from "@chainlink/contracts/src/v0.8/shared/access/ConfirmedOwner.sol";
 import {FunctionsRequest} from "@chainlink/contracts/src/v0.8/functions/dev/v1_0_0/libraries/FunctionsRequest.sol";
-import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
-import "@chainlink/contracts/src/v0.8/vrf/VRFConsumerBaseV2.sol";
 
 error Game__NotOpen();
 error Game__Full();
@@ -25,7 +23,7 @@ error Game__OutOfTurn();
 error Contract__OnlyOwner();
 error Game__NoRandomNumber();
 
-contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
+contract Phenomenon is FunctionsClient, ConfirmedOwner {
     string[] args;
     using FunctionsRequest for FunctionsRequest.Request;
 
@@ -37,9 +35,6 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
     bytes encryptedSecretsUrls;
     uint8 donHostedSecretsSlotID;
     uint64 donHostedSecretsVersion;
-
-    uint256[] public requestIdsVRF; //for random number
-    uint256 public lastRequestIdVRF; //for random number
 
     error UnexpectedRequestID(bytes32 requestId);
 
@@ -54,31 +49,13 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
     // Encryptor must be smaller than RandomSeed number returned from VRF --> 78 digits so >25 digits should be adequate
     string source;
     uint32 functionGasLimit = 300000; //for Chainlink Functions
-    uint32 callbackGasLimitVRF = 1000000; //for VRF random number
-
-    uint16 requestConfirmations = 3; //for VRF random number
-    uint32 numWords = 1; //for VRF random number
 
     // donID - Hardcoded for Mumbai
     // Check to get the donID for your supported network https://docs.chain.link/chainlink-functions/supported-networks
     bytes32 donID =
         0x66756e2d706f6c79676f6e2d6d756d6261692d31000000000000000000000000;
 
-    //struct for VRF random number
-    struct RequestStatus {
-        bool fulfilled;
-        bool exists;
-        uint256[] randomWords;
-    }
-
-    //mapping of uint256 to random word/number return value
-    mapping(uint256 => RequestStatus) public s_requestsVRF;
-    VRFCoordinatorV2Interface COORDINATOR;
-
-    uint64 s_subscriptionIdVRF; //subscriptionId for chainlink VRF random Number
     uint64 SUBSCRIPTION_ID_FUNCTIONS; //subscriptionId for chainlink Function
-    bytes latestVRFResponse;
-    bytes latestVRFError;
 
     /////////////////////////////Game Variables///////////////////////////////////
     enum GameState {
@@ -108,7 +85,7 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
     uint256 lastRoundTimestamp;
     //mapping of addresses that have signed up to play by game: prophetList[GAME_NUMBER][address]
     //returns 0 if not signed up and 1 if has signed up
-    mapping(uint256 => mapping(address => uint256)) public prophetList;
+    mapping(uint256 => mapping(address => bool)) public prophetList;
     ProphetData[] public prophets;
     GameState public gameStatus;
     uint256 public prophetsRemaining;
@@ -130,13 +107,8 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
         uint16 _numProphets,
         address _gameToken, //0x326C977E6efc84E512bB9C30f76E30c160eD06FB Polygon Mumbia $LINK
         string memory _source,
-        uint64 _subscriptionId, //Chainlink VRF SubscriptionID 6616
         uint64 _functionSubscriptionId //Chainlink Functions Subscription ID 1053
-    )
-        FunctionsClient(functionRouter)
-        VRFConsumerBaseV2(0x7a1BaC17Ccc5b313516C5E16fb24f7659aA5ebed)
-        ConfirmedOwner(msg.sender)
-    {
+    ) FunctionsClient(functionRouter) ConfirmedOwner(msg.sender) {
         OWNER = msg.sender;
         INTERVAL = _interval;
         ENTRANCE_FEE = _entranceFee;
@@ -150,10 +122,6 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
         tokenBalance = 0;
 
         source = _source;
-        COORDINATOR = VRFCoordinatorV2Interface(
-            0x7a1BaC17Ccc5b313516C5E16fb24f7659aA5ebed
-        );
-        s_subscriptionIdVRF = _subscriptionId;
         SUBSCRIPTION_ID_FUNCTIONS = _functionSubscriptionId;
     }
 
@@ -172,7 +140,7 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
             revert Game__Full();
         }
         //for (uint256 prophet = 0; prophet < prophets.length; prophet++) {
-        if (prophetList[GAME_NUMBER][msg.sender] == 1) {
+        if (prophetList[GAME_NUMBER][msg.sender]) {
             revert Game__AlreadyRegistered();
         }
         //}
@@ -182,11 +150,8 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
         newProphet.isFree = true;
         prophets.push(newProphet);
         tokenBalance += ENTRANCE_FEE;
-        prophetList[GAME_NUMBER][msg.sender] = 1;
+        prophetList[GAME_NUMBER][msg.sender] = true;
         prophetsRemaining++;
-        if (prophetsRemaining == 1) {
-            requestRandomWords();
-        }
 
         IERC20(GAME_TOKEN).transferFrom(
             msg.sender,
@@ -203,17 +168,44 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
             revert Game__NotEnoughProphets();
         }
 
-        if (s_requestsVRF[lastRequestIdVRF].exists == false) {
-            revert Game__NoRandomNumber();
-        }
         gameStatus = GameState.IN_PROGRESS;
         // Need to make sure our JavaScript code can handle the number so divide into a smaller number
-        roleVRFSeed =
-            s_requestsVRF[lastRequestIdVRF].randomWords[0] %
-            9007199254740991;
+        roleVRFSeed = (uint256(blockhash(block.number - 1))) % 9007199254740991;
 
         currentProphetTurn = block.timestamp % NUMBER_OF_PROPHETS;
         sendRequest(3);
+    }
+
+    function setStart() public {
+        if (gameRound == 1) {
+            for (
+                uint _prophet = 0;
+                _prophet < s_lastFunctionResponse.length;
+                _prophet++
+            ) {
+                if (s_lastFunctionResponse[_prophet] == "1") {
+                    // assign allegiance to self
+                    allegiance[GAME_NUMBER][
+                        prophets[_prophet].playerAddress
+                    ] = _prophet;
+                    // give Prophet one of his own tickets
+                    ticketsToValhalla[GAME_NUMBER][
+                        prophets[_prophet].playerAddress
+                    ] = 1;
+                    // Increment total tickets by 1
+                    totalTickets++;
+                    // This loop initializes accolites[]
+                    // each loop pushes the number of accolites/tickets sold into the prophet slot of the array
+                    accolites.push(1);
+                } else {
+                    accolites.push(0);
+                    prophetsRemaining--;
+                    prophets[_prophet].isAlive = false;
+                    prophets[_prophet].args = 99;
+                }
+            }
+            turnManager();
+        }
     }
 
     function ruleCheck() internal view {
@@ -311,70 +303,9 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
         totalTickets = 0;
     }
 
-    function setStart() public {
-        if (gameRound == 1) {
-            for (
-                uint _prophet = 0;
-                _prophet < s_lastFunctionResponse.length;
-                _prophet++
-            ) {
-                if (s_lastFunctionResponse[_prophet] == "1") {
-                    // assign allegiance to self
-                    allegiance[GAME_NUMBER][
-                        prophets[_prophet].playerAddress
-                    ] = _prophet;
-                    // give Prophet one of his own tickets
-                    ticketsToValhalla[GAME_NUMBER][
-                        prophets[_prophet].playerAddress
-                    ] = 1;
-                    // Increment total tickets by 1
-                    totalTickets++;
-                    // This loop initializes accolites[]
-                    // each loop pushes the number of accolites/tickets sold into the prophet slot of the array
-                    accolites.push(1);
-                } else {
-                    accolites.push(0);
-                    prophetsRemaining--;
-                    prophets[_prophet].isAlive = false;
-                    prophets[_prophet].args = 99;
-                }
-            }
-            turnManager();
-        }
-    }
-
     ///////////////////////////////////////////////////////////////////////////////////
     //////////////////       Functions to execute OffChain          ///////////////////
     ///////////////////////////////////////////////////////////////////////////////////
-    function requestRandomWords() internal returns (uint256 requestId) {
-        // Will revert if subscription is not set and funded.
-        requestId = COORDINATOR.requestRandomWords(
-            keyHash,
-            s_subscriptionIdVRF,
-            requestConfirmations,
-            callbackGasLimitVRF,
-            numWords
-        );
-        s_requestsVRF[requestId] = RequestStatus({
-            randomWords: new uint256[](0),
-            exists: true,
-            fulfilled: false
-        });
-        requestIdsVRF.push(requestId);
-        lastRequestIdVRF = requestId;
-        //emit RequestSent(requestId, numWords);
-        return requestId;
-    }
-
-    function fulfillRandomWords(
-        uint256 _requestId,
-        uint256[] memory _randomWords
-    ) internal override {
-        require(s_requestsVRF[_requestId].exists, "request not found");
-        s_requestsVRF[_requestId].fulfilled = true;
-        s_requestsVRF[_requestId].randomWords = _randomWords;
-        //emit RequestFulfilled(_requestId, _randomWords);
-    }
 
     function sendRequest(uint256 action) internal returns (bytes32 requestId) {
         //Need to figure out how to send encrypted secret!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -452,6 +383,7 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
                     prophetsRemaining--;
                 }
             }
+            turnManager();
         }
         // Only time more than one response is returned is at start game
         // This is the start game logic
@@ -480,7 +412,6 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
             }
         }*/
         gameStatus = GameState.IN_PROGRESS;
-        turnManager();
     }
 
     function turnManager() internal {
@@ -513,12 +444,21 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
     //////////// TICKET FUNCTIONS //////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////////////////////////
 
-    function highPriest(uint256 _prophetNum, uint256 _target) public {
+    function highPriest(uint256 _senderProphetNum, uint256 _target) public {
+        // Only prophets can call this function
+        // Prophet must be alive or assigned to high priest
+        // Can't try to follow non-existent prophet
         if (
-            msg.sender != prophets[_prophetNum].playerAddress &&
-            prophets[_prophetNum].args != 99
+            prophets[_senderProphetNum].playerAddress != msg.sender ||
+            (!prophets[_senderProphetNum].isAlive &&
+                prophets[_senderProphetNum].args != 99) ||
+            _target >= NUMBER_OF_PROPHETS
         ) {
             revert Game__NotAllowed();
+        }
+        // Can't change allegiance if following an eliminated prophet
+        if (prophets[allegiance[GAME_NUMBER][msg.sender]].isAlive == false) {
+            revert Game__AddressIsEliminated();
         }
         if (gameStatus != GameState.IN_PROGRESS) {
             revert Game__NotInProgress();
@@ -535,14 +475,13 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
         totalTickets++;
     }
 
-    /*
     function getReligion(uint256 _prophetNum, uint256 _ticketsToBuy) public {
         // Make sure game state allows for tickets to be bought
         if (gameStatus != GameState.IN_PROGRESS) {
             revert Game__NotInProgress();
         }
         // Prophets cannot buy tickets
-        if (prophetList[GAME_NUMBER][msg.sender] == 1) {
+        if (prophetList[GAME_NUMBER][msg.sender]) {
             revert Game__NotAllowed();
         }
         // Can't buy tickets of dead or nonexistent prophets
@@ -590,7 +529,7 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
             revert Game__ProphetIsDead();
         }
         // Prophets cannot sell tickets
-        if (prophetList[GAME_NUMBER][msg.sender] == 1) {
+        if (prophetList[GAME_NUMBER][msg.sender]) {
             revert Game__NotAllowed();
         }
         if (_ticketsToSell <= ticketsToValhalla[GAME_NUMBER][msg.sender]) {
@@ -652,11 +591,11 @@ contract Phenomenon is FunctionsClient, VRFConsumerBaseV2, ConfirmedOwner {
             allegiance[GAME_NUMBER][_sellerAddress] = 0;
         tokenBalance -= totalPrice;
         //Take 5% fee
-        totalPrice = (totalPrice * 95)/100;
+        totalPrice = (totalPrice * 95) / 100;
         //emit TicketsSold(_sellerAddress, ticketsSold, totalPrice);
 
         IERC20(GAME_TOKEN).transfer(_sellerAddress, totalPrice);
-    } */
+    }
 
     function claimTickets() public {
         if (gameStatus != GameState.ENDED) {
