@@ -125,10 +125,7 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
         SUBSCRIPTION_ID_FUNCTIONS = _functionSubscriptionId;
     }
 
-    function setSource(string memory _source) public {
-        if (msg.sender != OWNER) {
-            revert Contract__OnlyOwner();
-        }
+    function setSource(string memory _source) public onlyOwner {
         source = _source;
     }
 
@@ -177,7 +174,7 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
     }
 
     function setStart() public {
-        if (gameRound == 1) {
+        if (gameRound == 0) {
             for (
                 uint _prophet = 0;
                 _prophet < s_lastFunctionResponse.length;
@@ -621,10 +618,7 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
         uint256 _amount,
         address _token,
         address _destination
-    ) public {
-        if (msg.sender != OWNER) {
-            revert Contract__OnlyOwner();
-        }
+    ) public onlyOwner {
         IERC20(_token).transfer(_destination, _amount);
     }
 }
