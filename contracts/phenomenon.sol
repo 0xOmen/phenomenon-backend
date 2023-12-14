@@ -202,6 +202,7 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
                 }
             }
             turnManager();
+            gameStatus = GameState.IN_PROGRESS;
         }
     }
 
@@ -275,7 +276,7 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
         args.push(Strings.toString(getTicketShare(currentProphetTurn)));
     }
 
-    // Allow NUMBER_OF_PROPHETS to be changed in Hackathon but maybe don't let this happen in Production
+    // Allow NUMBER_OF_PROPHETS to be changed in Hackathon but maybe don't let this happen in Production?
     // There may be a griefing vector I haven't thought of
     function reset(uint16 _numberOfPlayers) public {
         if (msg.sender != OWNER) {
@@ -350,6 +351,8 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
             if (response[0] == "0") {
                 // kill prophet
                 prophets[currentProphetTurn].isAlive = false;
+                // Remove Prophet's accolite tickets from totalTickets for TicketShare calc
+                totalTickets -= accolites[currentProphetTurn];
                 // decrease number of remaining prophets
                 prophetsRemaining--;
             }
@@ -365,6 +368,8 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
             // Logic for a successful smite
             else if (response[0] == "3") {
                 prophets[target].isAlive = false;
+                // Remove Dead Prophet's accolite tickets from totalTickets for TicketShare calc
+                totalTickets -= accolites[target];
                 prophetsRemaining--;
             }
             // Logic for unsuccessful accusation
@@ -377,10 +382,13 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
                     prophets[target].isFree = false;
                 } else {
                     prophets[target].isAlive = false;
+                    // Remove Dead Prophet's accolite tickets from totalTickets for TicketShare calc
+                    totalTickets -= accolites[target];
                     prophetsRemaining--;
                 }
             }
             turnManager();
+            gameStatus = GameState.IN_PROGRESS;
         }
         // Only time more than one response is returned is at start game
         // This is the start game logic
@@ -408,7 +416,6 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
                 }
             }
         }*/
-        gameStatus = GameState.IN_PROGRESS;
     }
 
     function turnManager() internal {
@@ -432,14 +439,13 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
         }
     }
 
+    ////////////////////////////////////////////////////////////////////////////////////////////
+    //////////// TICKET FUNCTIONS //////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////////////////
     function getTicketShare(uint256 _playerNum) public view returns (uint256) {
         if (totalTickets == 0) return 0;
         else return (accolites[_playerNum] * 100) / totalTickets;
     }
-
-    ////////////////////////////////////////////////////////////////////////////////////////////
-    //////////// TICKET FUNCTIONS //////////////////////////////////////////////////////////////
-    ////////////////////////////////////////////////////////////////////////////////////////////
 
     function highPriest(uint256 _senderProphetNum, uint256 _target) public {
         // Only prophets can call this function
