@@ -1,5 +1,5 @@
-require("@nomicfoundation/hardhat-toolbox")
-require("@openzeppelin/hardhat-upgrades")
+//require("@nomicfoundation/hardhat-toolbox")
+//require("@openzeppelin/hardhat-upgrades")
 require("dotenv").config()
 
 /** @type import('hardhat/config').HardhatUserConfig */
@@ -10,6 +10,7 @@ const OPTIMISM_RPC_URL = process.env.OPTIMISM_RPC_URL
 const OMEN_TEST_PRIVATE_KEY = process.env.OMEN_TEST_PRIVATE_KEY
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY
 const OPTIMISTIC_ETHERSCAN_API_KEY = process.env.OPTIMISTIC_ETHERSCAN_API_KEY
+const POLYGON_MUMBAI_RPC_URL = process.env.POLYGON_MUMBAI_RPC_URL
 
 module.exports = {
     defaultNetwork: "hardhat",
@@ -56,5 +57,4 @@ module.exports = {
     optimisticEtherscan: {
         apiKey: OPTIMISTIC_ETHERSCAN_API_KEY,
     },
-
 }

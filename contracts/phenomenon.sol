@@ -478,6 +478,22 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
         totalTickets++;
     }
 
+    function getPrice(
+        uint256 supply,
+        uint256 amount
+    ) public pure returns (uint256) {
+        uint256 sum1 = supply == 0
+            ? 0
+            : ((supply - 1) * (supply) * (2 * (supply - 1) + 1)) / 6;
+        uint256 sum2 = supply == 0 && amount == 1
+            ? 1
+            : ((supply + amount - 1) *
+                (supply + amount) *
+                (2 * (supply + amount - 1) + 1)) / 6;
+        uint256 summation = sum2 - sum1;
+        return (summation * 1 ether) / 80;
+    }
+
     function getReligion(uint256 _prophetNum, uint256 _ticketsToBuy) public {
         // Make sure game state allows for tickets to be bought
         if (gameStatus != GameState.IN_PROGRESS) {
@@ -506,21 +522,27 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
             revert Game__AddressIsEliminated();
         }
 
-        // Check if player owns any tickets, if yes -> sell all tickets and buy
+        // Check if player owns any tickets of another prophet
         if (
             ticketsToValhalla[GAME_NUMBER][msg.sender] != 0 &&
             allegiance[GAME_NUMBER][msg.sender] != _prophetNum
         ) {
-            //sell tickets of prior religion, function will assign allegiance to 0
-            sellTickets(
-                allegiance[GAME_NUMBER][msg.sender],
-                ticketsToValhalla[GAME_NUMBER][msg.sender],
-                msg.sender
-            );
+            revert Game__NotAllowed();
         }
 
-        buyTicketsToValhalla(_prophetNum, _ticketsToBuy, msg.sender);
+        uint256 totalPrice = getPrice(
+            accolites[allegiance[GAME_NUMBER][msg.sender]],
+            _ticketsToBuy
+        );
+
+        ticketsToValhalla[GAME_NUMBER][msg.sender] += _ticketsToBuy;
+        accolites[_prophetNum] += _ticketsToBuy;
+        totalTickets += _ticketsToBuy;
+        tokenBalance += totalPrice;
         allegiance[GAME_NUMBER][msg.sender] = _prophetNum;
+        //emit TicketsBought(_buyerAddress, ticketsBought, totalPrice);
+
+        IERC20(GAME_TOKEN).transferFrom(msg.sender, address(this), totalPrice);
     }
 
     function loseReligion(uint256 _ticketsToSell) public {
@@ -536,68 +558,26 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
             revert Game__NotAllowed();
         }
         if (_ticketsToSell <= ticketsToValhalla[GAME_NUMBER][msg.sender]) {
-            sellTickets(
-                allegiance[GAME_NUMBER][msg.sender],
-                _ticketsToSell,
-                msg.sender
+            // Get price of selling tickets
+            uint256 totalPrice = getPrice(
+                accolites[allegiance[GAME_NUMBER][msg.sender]] - _ticketsToSell,
+                _ticketsToSell
             );
+            // Reduce the total number of tickets sold in the game by number of tickets sold by msg.sender
+            totalTickets -= _ticketsToSell;
+            // Remove tickets from msg.sender's balance
+            ticketsToValhalla[GAME_NUMBER][msg.sender] -= _ticketsToSell;
+            // If msg.sender sold all tickets then set allegiance to 0
+            if (ticketsToValhalla[GAME_NUMBER][msg.sender] == 0)
+                allegiance[GAME_NUMBER][msg.sender] = 0;
+            // Subtract the price of tickets sold from the tokenBalance for this game
+            tokenBalance -= totalPrice;
+            //Take 5% fee
+            totalPrice = (totalPrice * 95) / 100;
+            //emit TicketsSold(_sellerAddress, ticketsSold, totalPrice);
+
+            IERC20(GAME_TOKEN).transfer(msg.sender, totalPrice);
         } else revert Game__NotEnoughTicketsOwned();
-    }
-
-    function buyTicketsToValhalla(
-        uint256 _prophetNum,
-        uint256 _amountToBuy,
-        address _buyerAddress
-    ) internal {
-        // check how many tickets exist for _playerNum
-        uint256 totalPrice = 0;
-        uint256 ticketsBought = 0;
-        while (ticketsBought < _amountToBuy) {
-            ticketsBought++;
-            totalPrice +=
-                (((accolites[_prophetNum] + ticketsBought) *
-                    (accolites[_prophetNum] + ticketsBought)) *
-                    1000000000000000000) /
-                8000;
-        }
-
-        ticketsToValhalla[GAME_NUMBER][_buyerAddress] += ticketsBought;
-        accolites[_prophetNum] += ticketsBought;
-        totalTickets += ticketsBought;
-        tokenBalance += totalPrice;
-        //emit TicketsBought(_buyerAddress, ticketsBought, totalPrice);
-
-        IERC20(GAME_TOKEN).transferFrom(
-            _buyerAddress,
-            address(this),
-            totalPrice
-        );
-    }
-
-    function sellTickets(
-        uint256 _prophetNum,
-        uint256 _amountToSell,
-        address _sellerAddress
-    ) internal {
-        uint256 totalPrice = 0;
-        uint256 ticketsSold = 0;
-        while (ticketsSold < _amountToSell) {
-            totalPrice += ((((accolites[_prophetNum]) *
-                (accolites[_prophetNum])) * 1000000000000000000) / 8000);
-            ticketsSold++;
-            accolites[_prophetNum]--;
-        }
-
-        totalTickets -= ticketsSold;
-        ticketsToValhalla[GAME_NUMBER][_sellerAddress] -= ticketsSold;
-        if (ticketsToValhalla[GAME_NUMBER][_sellerAddress] == 0)
-            allegiance[GAME_NUMBER][_sellerAddress] = 0;
-        tokenBalance -= totalPrice;
-        //Take 5% fee
-        totalPrice = (totalPrice * 95) / 100;
-        //emit TicketsSold(_sellerAddress, ticketsSold, totalPrice);
-
-        IERC20(GAME_TOKEN).transfer(_sellerAddress, totalPrice);
     }
 
     function claimTickets() public {
