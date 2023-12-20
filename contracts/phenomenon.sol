@@ -4,7 +4,6 @@ pragma solidity ^0.8.7;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
 import {FunctionsClient} from "@chainlink/contracts/src/v0.8/functions/dev/v1_0_0/FunctionsClient.sol";
 import {ConfirmedOwner} from "@chainlink/contracts/src/v0.8/shared/access/ConfirmedOwner.sol";
 import {FunctionsRequest} from "@chainlink/contracts/src/v0.8/functions/dev/v1_0_0/libraries/FunctionsRequest.sol";
@@ -24,7 +23,7 @@ error Contract__OnlyOwner();
 error Game__NoRandomNumber();
 
 contract Phenomenon is FunctionsClient, ConfirmedOwner {
-    string[] args;
+    bytes[] args;
     using FunctionsRequest for FunctionsRequest.Request;
 
     bytes32 public s_lastFunctionRequestId;
@@ -99,6 +98,7 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
     mapping(uint256 => mapping(address => uint256)) public ticketsToValhalla;
     //tracks how many tickets to heaven have been sold for each Prophet
     uint256[] public accolites;
+    uint256[] public highPriestsByProphet;
     uint256 public totalTickets;
 
     constructor(
@@ -193,13 +193,14 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
                     totalTickets++;
                     // This loop initializes accolites[]
                     // each loop pushes the number of accolites/tickets sold into the prophet slot of the array
-                    accolites.push(1);
+                    highPriestsByProphet.push(1);
                 } else {
-                    accolites.push(0);
+                    highPriestsByProphet.push(0);
                     prophetsRemaining--;
                     prophets[_prophet].isAlive = false;
                     prophets[_prophet].args = 99;
                 }
+                accolites.push(0);
             }
             turnManager();
             gameStatus = GameState.IN_PROGRESS;
@@ -267,13 +268,13 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
         sendRequest(0);
     }
 
-    function setArgs(uint256 _action) internal {
+    function setArgsToSend(uint256 _action) internal {
         delete args;
-        args.push(Strings.toString(roleVRFSeed));
-        args.push(Strings.toString(NUMBER_OF_PROPHETS));
-        args.push(Strings.toString(_action));
-        args.push(Strings.toString(currentProphetTurn));
-        args.push(Strings.toString(getTicketShare(currentProphetTurn)));
+        args.push(abi.encodePacked(roleVRFSeed));
+        args.push(abi.encodePacked(NUMBER_OF_PROPHETS));
+        args.push(abi.encodePacked(_action));
+        args.push(abi.encodePacked(currentProphetTurn));
+        args.push(abi.encodePacked(getTicketShare(currentProphetTurn)));
     }
 
     // Allow NUMBER_OF_PROPHETS to be changed in Hackathon but maybe don't let this happen in Production?
@@ -298,6 +299,7 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
         NUMBER_OF_PROPHETS = _numberOfPlayers;
 
         delete accolites; //array
+        delete highPriestsByProphet;
         totalTickets = 0;
     }
 
@@ -308,7 +310,7 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
     function sendRequest(uint256 action) internal returns (bytes32 requestId) {
         //Need to figure out how to send encrypted secret!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         gameStatus = GameState.AWAITING_RESPONSE;
-        setArgs(action);
+        setArgsToSend(action);
 
         FunctionsRequest.Request memory req;
         req.initializeRequestForInlineJavaScript(source); // Initialize the request with JS code
@@ -321,7 +323,7 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
             );
         }
 
-        req.setArgs(args); // Set the arguments for the request
+        req.setBytesArgs(args); // Set the arguments for the request
 
         // Send the request and store the request ID
         s_lastFunctionRequestId = _sendRequest(
@@ -444,7 +446,10 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
     ////////////////////////////////////////////////////////////////////////////////////////////
     function getTicketShare(uint256 _playerNum) public view returns (uint256) {
         if (totalTickets == 0) return 0;
-        else return (accolites[_playerNum] * 100) / totalTickets;
+        else
+            return
+                ((accolites[_playerNum] + highPriestsByProphet[_playerNum]) *
+                    100) / totalTickets;
     }
 
     function highPriest(uint256 _senderProphetNum, uint256 _target) public {
@@ -467,12 +472,12 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
             revert Game__NotInProgress();
         }
         if (ticketsToValhalla[GAME_NUMBER][msg.sender] > 0) {
-            accolites[allegiance[GAME_NUMBER][msg.sender]]--;
+            highPriestsByProphet[allegiance[GAME_NUMBER][msg.sender]]--;
             ticketsToValhalla[GAME_NUMBER][msg.sender]--;
             allegiance[GAME_NUMBER][msg.sender] = 0;
             totalTickets--;
         }
-        accolites[_target]++;
+        highPriestsByProphet[_target]++;
         ticketsToValhalla[GAME_NUMBER][msg.sender]++;
         allegiance[GAME_NUMBER][msg.sender] = _target;
         totalTickets++;
@@ -592,7 +597,9 @@ contract Phenomenon is FunctionsClient, ConfirmedOwner {
             revert Game__NotEnoughTicketsOwned();
         }
         //This is prone to rounding error?
-        uint256 tokensPerTicket = tokenBalance / accolites[currentProphetTurn];
+        uint256 tokensPerTicket = tokenBalance /
+            (accolites[currentProphetTurn] +
+                highPriestsByProphet[currentProphetTurn]);
         uint256 tokensToSend = ticketsToValhalla[GAME_NUMBER][msg.sender] *
             tokensPerTicket;
         ticketsToValhalla[GAME_NUMBER][msg.sender] = 0;
